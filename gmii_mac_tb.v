@@ -187,14 +187,10 @@ begin
     $dumpvars(0, GMII_MAC_tb);
 end
 
-GMII_MAC # (
+GMII_MAC_RX # (
     .ip2({8'd192, 8'd168, 8'd100, 8'd102})
-) GMII_MAC_tb_inst (
+) GMII_MAC_RX_inst (
     .reset   (reset),      // input wire
-    .sys_clk (sys_clk),        // input wire
-    .gtx_clk (gtx_clk),     // output wire
-    .txd     (txd),        // output wire [7:0]
-    .txen    (txen),       // output wire
     .rx_clk  (rx_clk),      // input wire
     .rxd     (rxd),        // input wire  [7:0]
     .rxdv    (rxdv),       // input wire

@@ -1,7 +1,7 @@
 `timescale 1 ns/10 ps  // time-unit = 1 ns, precision = 10 ps
 // `include
 
-module GMII_MAC #
+module GMII_MAC_RX #
 (   // ip filter
     parameter [31:0] ip1 = {8'd192, 8'd168, 8'd0, 8'd1},
     parameter [31:0] ip2 = {8'd192, 8'd168, 8'd0, 8'd2},
@@ -11,14 +11,6 @@ module GMII_MAC #
 )
 (
     input wire reset
-    ,input wire sys_clk
-
-    // Transmitter signals
-    ,output wire gtx_clk      // Clock signal for gigabit TX signals (125 MHz)
-    ,output wire [7:0] txd   // Data to be transmitted
-    ,output wire txen        // Transmitter enable
-    // ,output wire txer        // Transmitter error (used to intentionally corrupt a packet, if necessary)
-    // ,output wire tx_clk      // Clock signal for 10/100 Mbit/s signals
 
     // Receiver signals
     ,input wire rx_clk         // Received clock signal (recovered from incoming received data)
@@ -28,7 +20,7 @@ module GMII_MAC #
     // ,input wire col,           // Collision detect (half-duplex connections only)
     // ,input wire cs            // Carrier sense (half-duplex connections only)
 
-    ,output reg [7:0] data_out  // TODO: CDC to sys_clk
+    ,output wire [7:0] data_out
     ,output wire IP_is_matched
     ,output reg error
     ,output reg CRC_ok
@@ -62,10 +54,7 @@ localparam [15:0]
     VLAN_TAG = 16'h81_00
 ;
 
-reg [7:0] txd_r;
-reg txen_r;
-assign txd = txd_r;
-assign txen = txen_r;
+assign data_out = rxd;
 
 //======== RECEIVER ===========================================
 // rx_clk clock domain registers
@@ -266,8 +255,10 @@ always @(posedge rx_clk) begin : Reseiver_FSM_third
 
             SM_CRC : frame_end <= 1'b1;
             SM_IPG : ;
-            SM_ERROR :
+            SM_ERROR : begin
+                frame_end <= 1'b1;
                 error <= 1'b1;
+            end
 
         endcase
     end
