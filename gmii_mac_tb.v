@@ -2,7 +2,7 @@
 
 module GMII_MAC_tb;
 
-localparam period = 5;
+localparam period = 4;
 
 reg reset = 0;
 reg sys_clk = 0;
@@ -15,7 +15,7 @@ reg rx_clk = 0;
 reg rxdv = 0;
 reg rxer = 0;
 
-integer i;
+integer i, j;
 reg [7:0] test_seq [25:0];
 
 initial begin
@@ -33,29 +33,30 @@ initial begin
     test_seq[9]  = 8'h00;
     test_seq[10] = 8'hed;
     test_seq[11] = 8'hac;
-    // IPv4
-    test_seq[12] = 8'h08;
+    // VLAN 1
+    test_seq[12] = 8'h81;
     test_seq[13] = 8'h00;
+    test_seq[14] = 8'hEE;
+    test_seq[15] = 8'hEF;
+    // VLAN 2
+    test_seq[16] = 8'h81;
+    test_seq[17] = 8'h00;
+    test_seq[18] = 8'hFF;
+    test_seq[19] = 8'hFE;
+    // IPv4
+    test_seq[20] = 8'h08;
+    test_seq[21] = 8'h00;
     // TCP
-    test_seq[14] = 8'h45;
-    test_seq[15] = 8'h00;
-
-    test_seq[16] = 8'h4;
-    test_seq[17] = 8'h4;
-    test_seq[18] = 8'h3;
-    test_seq[19] = 8'h4;
-    test_seq[20] = 8'h4;
-    test_seq[21] = 8'h4;
-    test_seq[22] = 8'h1;
-    test_seq[23] = 8'h2;
-    test_seq[24] = 8'h6;
-    test_seq[25] = 8'h4;
+    test_seq[22] = 8'h45;
+    test_seq[23] = 8'h00;
+    test_seq[24] = 8'hAA;
+    test_seq[25] = 8'hBB;
 end
 
 always begin
     #period
     rx_clk = ~rx_clk;
-    #2.5
+    #2
     sys_clk = ~sys_clk;
 end
 
@@ -81,12 +82,99 @@ initial begin
     @(posedge rx_clk) rxd = 8'h5D;
 
     // Header Frame
-    for (i=0; i < 26; i=i+1) begin
+    for (i=0; i < 22; i=i+1) begin
         @(posedge rx_clk)
             rxd = test_seq[i];
     end
 
+    // IPv4 packet; 3 word header
+    for (i=0; i < 3; i=i+1) begin
+        for (j=0; j < 4; j=j+1) begin
+            @(posedge rx_clk)
+            rxd = j+1;
+        end
+    end
+    // 91.105.192.100
+    // 5b 69 c0 64
+    @(posedge rx_clk) rxd = 8'h5b;
+    @(posedge rx_clk) rxd = 8'h69;
+    @(posedge rx_clk) rxd = 8'hc0;
+    @(posedge rx_clk) rxd = 8'h64;
+
+    // 192.168.1.102
+    // c0 a8 01 66
+    @(posedge rx_clk) rxd = 8'd192;
+    @(posedge rx_clk) rxd = 8'd168;
+    @(posedge rx_clk) rxd = 8'd100;
+    @(posedge rx_clk) rxd = 8'd102;
+
+    for (i=0; i < 1; i=i+1) begin
+        for (j=0; j < 8; j=j+1) begin
+            @(posedge rx_clk)
+            rxd = j+10;
+        end
+    end
+
+    @(posedge rx_clk) rxdv = 0;
+
     #200
+
+
+    //------------sdjkfsdjlkfjsdlkfjlsdjfklsdlfjlsdjfjsdlkfjlsdkjfjsdjflsdk
+    #20     @(posedge rx_clk) rxd = 8'h55;
+    #50     @(posedge rx_clk) rxdv = 1;
+
+    // preamble sequence
+    for (i=1; i < 8; i=i+1) begin
+        @(posedge rx_clk)
+            rxd = 8'h55;
+    end
+
+    // START_FRAME_DELIMITER
+    @(posedge rx_clk) rxd = 8'h5D;
+
+    // Header Frame
+    for (i=0; i < 16; i=i+1) begin
+        @(posedge rx_clk)
+            rxd = test_seq[i];
+    end
+    for (i=20; i < 22; i=i+1) begin
+        @(posedge rx_clk)
+            rxd = test_seq[i];
+    end
+
+    // IPv4 packet; 3 word header
+    for (i=0; i < 3; i=i+1) begin
+        for (j=0; j < 4; j=j+1) begin
+            @(posedge rx_clk)
+            rxd = j+1;
+        end
+    end
+    // 91.105.192.100
+    // 5b 69 c0 64
+    @(posedge rx_clk) rxd = 8'h5b;
+    @(posedge rx_clk) rxd = 8'h69;
+    @(posedge rx_clk) rxd = 8'hc0;
+    @(posedge rx_clk) rxd = 8'h64;
+
+    // 192.168.1.102
+    // c0 a8 01 66
+    @(posedge rx_clk) rxd = 8'hc0;
+    @(posedge rx_clk) rxd = 8'ha8;
+    @(posedge rx_clk) rxd = 8'h01;
+    @(posedge rx_clk) rxd = 8'h66;
+
+    for (i=0; i < 10; i=i+1) begin
+        for (j=0; j < 8; j=j+1) begin
+            @(posedge rx_clk)
+            rxd = j+10;
+        end
+    end
+
+    @(posedge rx_clk) rxdv = 0;
+
+    #200
+
     $finish;
 end
 
@@ -99,8 +187,9 @@ begin
     $dumpvars(0, GMII_MAC_tb);
 end
 
-
-GMII_MAC GMII_MAC_tb_inst(
+GMII_MAC # (
+    .ip2({8'd192, 8'd168, 8'd100, 8'd102})
+) GMII_MAC_tb_inst (
     .reset   (reset),      // input wire
     .sys_clk (sys_clk),        // input wire
     .gtx_clk (gtx_clk),     // output wire
