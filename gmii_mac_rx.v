@@ -8,8 +8,7 @@ module GMII_MAC_RX #
     parameter [31:0] ip3 = {8'd192, 8'd168, 8'd0, 8'd3},
     parameter [31:0] ip4 = {8'd192, 8'd168, 8'd1, 8'd102},
     parameter [31:0] ip5 = {8'd192, 8'd168, 8'd0, 8'd5}
-)
-(
+) (
     input wire reset
 
     // Receiver signals
@@ -66,15 +65,14 @@ reg [3:0] vlan_tags_cntr;   // count how muach Tags in PCKG
 reg [10:0] payload_cntr;
 reg [95:0] mac_src_dst;     // received MAC DST and MAC SRC
 reg [15:0] frame_type;
-reg start_frame, frame_end;
+reg frame_start, frame_end;
 reg [63:0] ip_src_dst_r;    // received IPv4 DST and IPv4 SRC
 
 // example how to check MAC
 wire MAC_is_correct;
 wire [47:0] MAC_src_w, MAC_dst_w;
-
-assign MAC_dst_w = mac_src_dst[95:48];
-assign MAC_src_w = mac_src_dst[47:0];
+assign MAC_src_w = mac_src_dst[95:48];
+assign MAC_dst_w = mac_src_dst[47:0];
 assign MAC_is_correct = (MAC_DST == MAC_dst_w) ? 1'b1 : 1'b0;
 
 wire [31:0] ip_dest, ip_src;
@@ -105,7 +103,6 @@ always @(posedge rx_clk) begin : Reseiver_FSM_first
         fsm_rcvr <= SM_IDLE;
     else
         fsm_rcvr <= fsm_rcvr_next;
-
 end // :  Reseiver_FSM_first
 
 
@@ -194,7 +191,7 @@ always @(posedge rx_clk) begin : Reseiver_FSM_third
         preamble_cntr <= 4'h0;
         payload_cntr <= 11'b0;
         header_cntr <= 4'h0;
-        start_frame <= 1'b0;
+        frame_start <= 1'b0;
         frame_end <= 1'b0;
         frame_type <= 16'h0;
         mac_src_dst <= 96'h0;
@@ -207,7 +204,7 @@ always @(posedge rx_clk) begin : Reseiver_FSM_third
         preamble_cntr <= 4'h0;
         payload_cntr <= 11'b0;
         header_cntr <= 4'h0;
-        start_frame <= 1'b0;
+        frame_start <= 1'b0;
         frame_end <= 1'b0;
 
         case (fsm_rcvr_next)    // third always work on NEXT state
@@ -225,7 +222,7 @@ always @(posedge rx_clk) begin : Reseiver_FSM_third
 
             SM_SFD :
                 if (rxd == START_FRAME_DELIMITER)
-                    start_frame <= 1'b1;
+                    frame_start <= 1'b1;
 
             SM_HEAD_MAC : begin
                 header_cntr <= header_cntr + 1'b1;
@@ -255,6 +252,7 @@ always @(posedge rx_clk) begin : Reseiver_FSM_third
 
             SM_CRC : frame_end <= 1'b1;
             SM_IPG : ;
+
             SM_ERROR : begin
                 frame_end <= 1'b1;
                 error <= 1'b1;
