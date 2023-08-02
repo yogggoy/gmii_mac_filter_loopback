@@ -17,11 +17,13 @@ reg rxer = 0;
 
 integer i, j;
 
-reg [7:0] ex2_memory [0:287];
+reg [7:0] ex1_memory [0:101];
+reg [7:0] ex2_memory [0:65];
+reg [7:0] ex3_memory [0:287];
 initial begin
-    $readmemh("eth_frame.mem", ex2_memory);
-    // for (i=0; i < 20; i=i+1)
-    //     $display("R] %00h ", ex2_memory[i]);
+    $readmemh("eth_frame.mem", ex1_memory);
+    $readmemh("eth_frame_2.mem", ex2_memory);
+    $readmemh("eth_frame_3.mem", ex3_memory);
 end
 
 always begin
@@ -41,15 +43,38 @@ initial begin
     #20     @(posedge rx_clk) rxd = 8'h55;
     #50     @(posedge rx_clk) rxdv = 1;
 
-    // preamble sequence
-    for (i=1; i < 8; i=i+1) @(posedge rx_clk) rxd = 8'h55;
+    // first frame
+    for (i=1; i < 10; i=i+1) @(posedge rx_clk) rxd = 8'h55;
     @(posedge rx_clk) rxd = 8'h5D; // START_FRAME_DELIMITER
-
-    // Header Frame
-    for (i=0; i < 288; i=i+1)
-        @(posedge rx_clk) rxd = ex2_memory[i];
-
+    for (i=0; i < 102; i=i+1) @(posedge rx_clk) rxd = ex1_memory[i];
     @(posedge rx_clk) rxdv = 0;
+    @(posedge rx_clk) rxd = 8'h0;
+    #300
+
+    // second frame
+    #50     @(posedge rx_clk) rxdv = 1;
+    for (i=1; i < 10; i=i+1) @(posedge rx_clk) rxd = 8'h55;
+    @(posedge rx_clk) rxd = 8'h5D; // START_FRAME_DELIMITER
+    for (i=0; i < 66; i=i+1) @(posedge rx_clk) rxd = ex2_memory[i];
+    @(posedge rx_clk) rxdv = 0;
+    @(posedge rx_clk) rxd = 8'h0;
+    #300
+
+    // third frame
+    #50     @(posedge rx_clk) rxdv = 1;
+    for (i=1; i < 10; i=i+1) @(posedge rx_clk) rxd = 8'h55;
+    @(posedge rx_clk) rxd = 8'h5D; // START_FRAME_DELIMITER
+    for (i=0; i < 288; i=i+1) @(posedge rx_clk) rxd = ex3_memory[i];
+    @(posedge rx_clk) rxdv = 0;
+    @(posedge rx_clk) rxd = 8'h0;
+    #300
+
+    #50     @(posedge rx_clk) rxdv = 1;
+    for (i=1; i < 10; i=i+1) @(posedge rx_clk) rxd = 8'h55;
+    @(posedge rx_clk) rxd = 8'h5D; // START_FRAME_DELIMITER
+    for (i=0; i < 102; i=i+1) @(posedge rx_clk) rxd = ex1_memory[i];
+    @(posedge rx_clk) rxdv = 0;
+    @(posedge rx_clk) rxd = 8'h0;
 
     #250
     $finish;

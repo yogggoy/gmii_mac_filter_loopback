@@ -58,7 +58,6 @@ assign data_out = rxd;
 //======== RECEIVER ===========================================
 // rx_clk clock domain registers
 reg [3:0] fsm_rcvr, fsm_rcvr_next;
-reg [31:0] CRC_received_r; // used for CRC check
 reg [3:0] preamble_cntr;    // counter for 7 preamble 8'h55
 reg [3:0] header_cntr;      // counter for header FSM
 reg [3:0] vlan_tags_cntr;   // count how muach Tags in PCKG
@@ -95,6 +94,29 @@ assign Payload_min = (vlan_tags_cntr == 0) ? 46 :
                      (vlan_tags_cntr == 1) ? 42 :
                      (vlan_tags_cntr == 2) ? 38 :
                      34;       // Max 2 Vtag support
+
+//============ crc =========
+// [7 : 0] = [31:24] // [15: 8] = [23:16] // [23:16] = [15: 8] // [31:24] = [7 : 0]
+
+reg [31:0] CRC_received_r;
+reg rCRC_init, rCRC_en;
+
+wire [31:0] wCRC_32;
+wire wCRC_ok;
+wire wCRC_shift_ok;
+reg [2:0] wCRC_ok_shift;
+
+always @(posedge rx_clk) begin
+    if (reset)
+        wCRC_ok_shift <= 0;
+    else begin
+        wCRC_ok_shift[0] <= wCRC_ok;
+        wCRC_ok_shift[1] <= wCRC_ok_shift[0];
+        wCRC_ok_shift[2] <= wCRC_ok_shift[1];
+    end
+end
+
+assign  wCRC_shift_ok = |wCRC_ok_shift;
 
 //======================= FSM RX START =======================\\
 
@@ -171,6 +193,7 @@ always @(*) begin : Reseiver_FSM_second
 
         SM_CRC :
             if (rxer) fsm_rcvr_next = SM_ERROR;
+            else if (!wCRC_shift_ok) fsm_rcvr_next = SM_ERROR;
             else fsm_rcvr_next = SM_IPG;
 
         SM_ERROR :
@@ -187,7 +210,7 @@ end // : Reseiver_FSM_second
 
 always @(posedge rx_clk) begin : Reseiver_FSM_third
     if (reset) begin
-        CRC_received_r <= 32'h0;
+        CRC_received_r <= 32'hFFFFFFFF;
         preamble_cntr <= 4'h0;
         payload_cntr <= 11'b0;
         header_cntr <= 4'h0;
@@ -198,6 +221,9 @@ always @(posedge rx_clk) begin : Reseiver_FSM_third
         ip_src_dst_r <= 64'b0;
         vlan_tags_cntr <= 4'b0;
         error <= 1'b0;
+        rCRC_init <= 1'b1;
+        rCRC_en <= 1'b0;
+        CRC_ok <= 1'b0;
     end
     else begin
         CRC_received_r <= { CRC_received_r[23:0], rxd };
@@ -206,52 +232,70 @@ always @(posedge rx_clk) begin : Reseiver_FSM_third
         header_cntr <= 4'h0;
         frame_start <= 1'b0;
         frame_end <= 1'b0;
+        rCRC_init <= 1'b0;
+        rCRC_en <= 1'b0;
 
         case (fsm_rcvr_next)    // third always work on NEXT state
             SM_IDLE : begin
+                rCRC_init <= 1'b1;
                 vlan_tags_cntr <= 4'b0;
                 if (rxd == PREAMBLE) preamble_cntr <= preamble_cntr + 1'b1;
                 else preamble_cntr <= 4'b0;
             end
 
             SM_PRMBL_RDY : begin
+                CRC_ok <= 1'b0;
                 error <= 0;
                 if (rxd == PREAMBLE) preamble_cntr <= preamble_cntr;
                 else preamble_cntr <= 4'b0;
             end
 
-            SM_SFD :
-                if (rxd == START_FRAME_DELIMITER)
+            SM_SFD : begin
+                if (rxd == START_FRAME_DELIMITER) begin
                     frame_start <= 1'b1;
+                    rCRC_en <= 1'b1;
+                end
+            end
 
             SM_HEAD_MAC : begin
+                rCRC_en <= 1'b1;
                 header_cntr <= header_cntr + 1'b1;
                 mac_src_dst <= {mac_src_dst[88:0], rxd};
             end
 
             SM_FR_TYPE : begin
+                rCRC_en <= 1'b1;
                 // use preamble_cntr just like byte counter
                 preamble_cntr <= preamble_cntr + 1'b1;
                 frame_type <= {frame_type[7:0], rxd};
             end
 
             SM_FR_VLAN : begin
+                rCRC_en <= 1'b1;
                 header_cntr <= header_cntr + 1'b1;
                 if (header_cntr == 1)
                     vlan_tags_cntr <= vlan_tags_cntr +1'b1;
             end
 
             SM_PAYLOAD : begin
+                rCRC_en <= 1'b1;
                 payload_cntr <= payload_cntr + 1'b1;
-                end
+            end
 
             SM_IP_DEST : begin
+                rCRC_en <= 1'b1;
                 payload_cntr <= payload_cntr + 1'b1;
                 ip_src_dst_r <= {ip_src_dst_r[55:0], rxd};
             end
 
-            SM_CRC : frame_end <= 1'b1;
-            SM_IPG : ;
+            SM_CRC : begin
+                rCRC_en <= 1'b0;
+                frame_end <= 1'b1;
+            end
+
+            SM_IPG : begin
+                if (wCRC_shift_ok == 1'b1) CRC_ok <= 1'b1;
+            end
 
             SM_ERROR : begin
                 frame_end <= 1'b1;
@@ -263,5 +307,14 @@ always @(posedge rx_clk) begin : Reseiver_FSM_third
 end // : Reseiver_FSM_third
 //======================= FSM RX END =======================\\
 
+CRC_chk CRC_chk_inst (
+    .reset          (reset),
+    .clk            (rx_clk),
+    .CRC_data_in    (rxd),
+    .CRC_init       (rCRC_init),
+    .CRC_en         (rCRC_en),
+    .CRC_data_out   (wCRC_32),
+    .CRC_ok        (wCRC_ok)
+);
 
 endmodule
